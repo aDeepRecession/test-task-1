@@ -18,17 +18,18 @@ import (
 type QueueMap struct {
 	qMap    map[string]chan string
 	chanCap int
-	*sync.Mutex
+	*sync.RWMutex
 }
 
 func (qm *QueueMap) PutChan(key string) chan<- string {
 	ch, ok := qm.qMap[key]
-	if !ok {
-		qm.Lock()
-		qm.qMap[key] = make(chan string, qm.chanCap)
-		qm.Unlock()
 
-		ch = qm.qMap[key]
+	if !ok {
+		ch = make(chan string, qm.chanCap)
+
+		qm.Lock()
+		qm.qMap[key] = ch
+		qm.Unlock()
 	}
 
 	return ch
@@ -36,12 +37,13 @@ func (qm *QueueMap) PutChan(key string) chan<- string {
 
 func (qm *QueueMap) GetChan(key string) <-chan string {
 	ch, ok := qm.qMap[key]
-	if !ok {
-		qm.Lock()
-		qm.qMap[key] = make(chan string, qm.chanCap)
-		qm.Unlock()
 
-		ch = qm.qMap[key]
+	if !ok {
+		ch = make(chan string, qm.chanCap)
+
+		qm.Lock()
+		qm.qMap[key] = ch
+		qm.Unlock()
 	}
 
 	return ch
@@ -49,12 +51,13 @@ func (qm *QueueMap) GetChan(key string) <-chan string {
 
 func (qm *QueueMap) Get(key string) (string, error) {
 	ch, ok := qm.qMap[key]
-	if !ok {
-		qm.Lock()
-		qm.qMap[key] = make(chan string, qm.chanCap)
-		qm.Unlock()
 
-		ch = qm.qMap[key]
+	if !ok {
+		ch = make(chan string, qm.chanCap)
+
+		qm.Lock()
+		qm.qMap[key] = ch
+		qm.Unlock()
 	}
 
 	select {
@@ -74,7 +77,7 @@ var (
 var queueMap = QueueMap{
 	map[string]chan string{},
 	1000,
-	&sync.Mutex{},
+	&sync.RWMutex{},
 }
 
 func main() {
