@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"log"
 	"net/http"
 	"net/url"
@@ -119,7 +120,22 @@ func main() {
 
 func handle(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet {
-		handleGET(w, r)
+		val, err := handleGET(w, r)
+
+		if errors.Is(err, errBadArguments) {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		if errors.Is(err, errNotFound) {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
+		fmt.Fprintln(w, val)
 		return
 	}
 
