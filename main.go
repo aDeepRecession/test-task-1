@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"flag"
-	"fmt"
 	"log"
 	"net/http"
 	"net/url"
@@ -64,6 +63,7 @@ func (qm *QueueMap) Get(key string) (string, error) {
 var (
 	errNotFound     = errors.New("not found")
 	errBadArguments = errors.New("bad arguments")
+	errTimeout      = errors.New("timeout")
 )
 
 var queueMap = QueueMap{
@@ -110,21 +110,7 @@ func main() {
 
 func handle(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet {
-		val, err := handleGET(w, r)
-		if errors.Is(err, errNotFound) {
-			w.WriteHeader(http.StatusNotFound)
-			return
-		}
-		if errors.Is(err, errBadArguments) {
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-
-		fmt.Fprintln(w, val)
+		handleGET(w, r)
 		return
 	}
 
@@ -132,6 +118,10 @@ func handle(w http.ResponseWriter, r *http.Request) {
 		err := handlePUT(w, r)
 		if errors.Is(err, errBadArguments) {
 			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		if errors.Is(err, errTimeout) {
+			w.WriteHeader(http.StatusGatewayTimeout)
 			return
 		}
 		if err != nil {
@@ -151,10 +141,16 @@ func handlePUT(w http.ResponseWriter, r *http.Request) error {
 		return errBadArguments
 	}
 
-	ch := queueMap.PutChan(queueName)
-	ch <- val
+	timer := time.NewTimer(10 * time.Second)
 
-	return nil
+	ch := queueMap.PutChan(queueName)
+
+	select {
+	case ch <- val:
+		return nil
+	case <-timer.C:
+		return errTimeout
+	}
 }
 
 func parsePutArgs(url *url.URL) (string, string, error) {
