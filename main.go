@@ -14,12 +14,6 @@ import (
 	"time"
 )
 
-type MessageBrocker interface {
-	Put(string, string) error
-	GetChan(string) (<-chan string, error)
-	Get(string) (string, error)
-}
-
 type QueueMap struct {
 	qMap    map[string]chan string
 	chanCap int
