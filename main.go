@@ -69,12 +69,6 @@ func (qm *QueueMap) Get(key string) (string, error) {
 	}
 }
 
-var (
-	errNotFound     = errors.New("not found")
-	errBadArguments = errors.New("bad arguments")
-	errTimeout      = errors.New("timeout")
-)
-
 var queueMap = QueueMap{
 	map[string]chan string{},
 	1000,
@@ -120,50 +114,22 @@ func main() {
 
 func handle(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet {
-		val, err := handleGET(w, r)
-
-		if errors.Is(err, errBadArguments) {
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-		if errors.Is(err, errNotFound) {
-			w.WriteHeader(http.StatusNotFound)
-			return
-		}
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-
-		fmt.Fprintln(w, val)
-		return
+		handleGET(w, r)
 	}
 
 	if r.Method == http.MethodPut {
-		err := handlePUT(w, r)
-		if errors.Is(err, errBadArguments) {
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-		if errors.Is(err, errTimeout) {
-			w.WriteHeader(http.StatusGatewayTimeout)
-			return
-		}
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-
+		handlePUT(w, r)
 		return
 	}
 
 	w.WriteHeader(http.StatusBadRequest)
 }
 
-func handlePUT(w http.ResponseWriter, r *http.Request) error {
+func handlePUT(w http.ResponseWriter, r *http.Request) {
 	queueName, val, err := parsePutArgs(r.URL)
 	if err != nil {
-		return errBadArguments
+		w.WriteHeader(http.StatusBadRequest)
+		return
 	}
 
 	timer := time.NewTimer(10 * time.Second)
@@ -172,9 +138,10 @@ func handlePUT(w http.ResponseWriter, r *http.Request) error {
 
 	select {
 	case ch <- val:
-		return nil
+		return
 	case <-timer.C:
-		return errTimeout
+		w.WriteHeader(http.StatusGatewayTimeout)
+		return
 	}
 }
 
@@ -200,33 +167,31 @@ func parsePutArgs(url *url.URL) (string, string, error) {
 	return path, val[0], nil
 }
 
-func handleGET(w http.ResponseWriter, r *http.Request) (string, error) {
+func handleGET(w http.ResponseWriter, r *http.Request) {
 	queueName, timeout, err := parseGetArgs(r.URL)
 	if err != nil {
-		return "", errBadArguments
+		w.WriteHeader(http.StatusBadRequest)
+		return
 	}
 
 	if timeout == 0 {
 		val, err := queueMap.Get(queueName)
 		if err != nil {
-			return "", errNotFound
+			w.WriteHeader(http.StatusNotFound)
+			return
 		}
 
-		return val, nil
+		fmt.Fprintln(w, val)
+		return
 	}
 
 	ch := queueMap.GetChan(queueName)
-	if err != nil {
-		return "", errNotFound
-	}
-
 	timer := time.NewTimer(timeout).C
-
 	select {
 	case <-timer:
-		return "", errNotFound
+		w.WriteHeader(http.StatusNotFound)
 	case val := <-ch:
-		return val, nil
+		fmt.Fprintln(w, val)
 	}
 }
 
