@@ -22,44 +22,16 @@ type QueueMap struct {
 	*sync.RWMutex
 }
 
-func (qm *QueueMap) PutChan(key string) chan<- string {
-	ch, ok := qm.qMap[key]
-
-	if !ok {
-		ch = make(chan string, qm.chanCap)
-
-		qm.Lock()
-		qm.qMap[key] = ch
-		qm.Unlock()
-	}
-
-	return ch
+func (qm *QueueMap) GetWriteChan(key string) chan<- string {
+	return qm.getChan(key)
 }
 
-func (qm *QueueMap) GetChan(key string) <-chan string {
-	ch, ok := qm.qMap[key]
-
-	if !ok {
-		ch = make(chan string, qm.chanCap)
-
-		qm.Lock()
-		qm.qMap[key] = ch
-		qm.Unlock()
-	}
-
-	return ch
+func (qm *QueueMap) GetReadChan(key string) <-chan string {
+	return qm.getChan(key)
 }
 
-func (qm *QueueMap) Get(key string) (string, error) {
-	ch, ok := qm.qMap[key]
-
-	if !ok {
-		ch = make(chan string, qm.chanCap)
-
-		qm.Lock()
-		qm.qMap[key] = ch
-		qm.Unlock()
-	}
+func (qm *QueueMap) GetValue(key string) (string, error) {
+	ch := qm.getChan(key)
 
 	select {
 	case val := <-ch:
@@ -67,6 +39,19 @@ func (qm *QueueMap) Get(key string) (string, error) {
 	default:
 		return "", errors.New("not found")
 	}
+}
+
+func (qm *QueueMap) getChan(key string) chan string {
+	ch, ok := qm.qMap[key]
+	if !ok {
+		ch = make(chan string, qm.chanCap)
+
+		qm.Lock()
+		qm.qMap[key] = ch
+		qm.Unlock()
+	}
+
+	return ch
 }
 
 var queueMap = QueueMap{
@@ -134,7 +119,7 @@ func handlePUT(w http.ResponseWriter, r *http.Request) {
 
 	timer := time.NewTimer(10 * time.Second)
 
-	ch := queueMap.PutChan(queueName)
+	ch := queueMap.GetWriteChan(queueName)
 
 	select {
 	case ch <- val:
@@ -175,7 +160,7 @@ func handleGET(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if timeout == 0 {
-		val, err := queueMap.Get(queueName)
+		val, err := queueMap.GetValue(queueName)
 		if err != nil {
 			w.WriteHeader(http.StatusNotFound)
 			return
@@ -185,7 +170,7 @@ func handleGET(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ch := queueMap.GetChan(queueName)
+	ch := queueMap.GetReadChan(queueName)
 	timer := time.NewTimer(timeout).C
 	select {
 	case <-timer:
