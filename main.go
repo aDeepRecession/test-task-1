@@ -11,18 +11,23 @@ import (
 	"os/signal"
 	"regexp"
 	"strconv"
+	"sync"
 	"time"
 )
 
 type QueueMap struct {
 	qMap    map[string]chan string
 	chanCap int
+	m       *sync.Mutex
 }
 
 func (qm *QueueMap) PutChan(key string) chan<- string {
 	ch, ok := qm.qMap[key]
 	if !ok {
+		qm.m.Lock()
 		qm.qMap[key] = make(chan string, qm.chanCap)
+		qm.m.Unlock()
+
 		ch = qm.qMap[key]
 	}
 
@@ -32,7 +37,10 @@ func (qm *QueueMap) PutChan(key string) chan<- string {
 func (qm *QueueMap) GetChan(key string) <-chan string {
 	ch, ok := qm.qMap[key]
 	if !ok {
+		qm.m.Lock()
 		qm.qMap[key] = make(chan string, qm.chanCap)
+		qm.m.Unlock()
+
 		ch = qm.qMap[key]
 	}
 
@@ -42,7 +50,10 @@ func (qm *QueueMap) GetChan(key string) <-chan string {
 func (qm *QueueMap) Get(key string) (string, error) {
 	ch, ok := qm.qMap[key]
 	if !ok {
+		qm.m.Lock()
 		qm.qMap[key] = make(chan string, qm.chanCap)
+		qm.m.Unlock()
+
 		ch = qm.qMap[key]
 	}
 
@@ -63,6 +74,7 @@ var (
 var queueMap = QueueMap{
 	map[string]chan string{},
 	1000,
+	&sync.Mutex{},
 }
 
 func main() {
